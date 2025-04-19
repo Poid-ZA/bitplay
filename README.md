@@ -1,125 +1,222 @@
 # BitPlay: Torrent Streaming Web App
 
-BitPlay is a web application built with Go that allows you to stream video content directly from torrents in your browser. It features a clean web UI, support for SOCKS5 proxies, and integration with Prowlarr and Jackett for seamless torrent searching.
+BitPlay is a secure, lightweight web application built with Go and Tailwind CSS that allows you to stream video content directly from torrents in your browser. It features a clean, accessible web UI, SOCKS5 proxy support, and integration with Prowlarr and Jackett for seamless torrent searching. Designed for self-hosting, BitPlay prioritizes security, minimalism, and auditability.
 
-![Bitplay Home](screenshots/bitplay_home.png)
+![BitPlay Home](screenshots/bitplay_home.png)
 
 ## Features
 
-*   **Direct Torrent Streaming:** Stream video files from magnet links or torrent files directly without needing to download them completely first.
-*   **Web-Based UI:** Access and control BitPlay through a user-friendly web interface.
-*   **Proxy Support:** Configure a SOCKS5 proxy for all torrent-related traffic (fetching metadata, peer connections). (Note: HTTP proxies are not currently supported).
-*   **Prowlarr Integration:** Connect to your Prowlarr instance to search across your configured indexers directly within BitPlay.
-*   **Jackett Integration:** Connect to your Jackett instance as an alternative search provider.
-*   **On-the-fly Subtitle Conversion:** Converts SRT subtitles to VTT format for browser compatibility.
-*   **Session Management:** Handles multiple torrent sessions and cleans up inactive ones.
+- **Direct Torrent Streaming**: Stream video files from magnet links or torrent files without downloading them completely.
+- **Web-Based UI**: Access and control BitPlay through a user-friendly, accessible web interface built with Tailwind CSS and Video.js.
+- **Proxy Support**: Configure a SOCKS5 proxy for all torrent-related traffic (metadata fetching, peer connections). HTTP proxies are not supported.
+- **Prowlarr Integration**: Search across configured indexers via your Prowlarr instance directly within BitPlay.
+- **Jackett Integration**: Use Jackett as an alternative search provider.
+- **On-the-Fly Subtitle Conversion**: Converts SRT subtitles to VTT for browser compatibility.
+- **Session Management**: Handles multiple torrent sessions and cleans up inactive ones.
+- **Security Features**: Encrypted settings storage, Content Security Policy (CSP), and minimal dependencies to reduce attack surface.
+- **Accessibility**: ARIA attributes, keyboard navigation, and clear UI labels for inclusive access.
+
+## Security
+
+BitPlay has been designed with security in mind to address concerns about insecure code, plaintext secrets, and malicious code:
+
+- **Encrypted Settings**: Proxy credentials, Prowlarr/Jackett API keys, and other sensitive data are encrypted in `settings.json` using `golang.org/x/crypto`.
+- **Secure Frontend**: The web UI uses a strict CSP, local Video.js assets (no CDNs), and masks API keys in input fields.
+- **Minimized Dependencies**: Go and Node.js dependencies are kept to a minimum, with regular audits using `govulncheck` and `npm audit`.
+- **Docker Security**: The Docker image uses a `scratch` base for minimalism and can be scanned for vulnerabilities.
+- **Input Validation**: User inputs (magnet links, torrent files, search queries) are sanitized to prevent XSS and malicious uploads.
+
+To verify security:
+- Run `govulncheck` for Go dependencies:
+  ```bash
+  go install golang.org/x/vuln/cmd/govulncheck@latest
+  govulncheck ./...
+  ```
+- Run `npm audit` for frontend dependencies:
+  ```bash
+  npm audit
+  ```
+- Scan the Docker image:
+  ```bash
+  docker scan ghcr.io/aculix/bitplay:main
+  ```
 
 ## Getting Started
 
-You can run BitPlay either directly using Go or via Docker Compose.
+You can run BitPlay locally with Go or via Docker (recommended for self-hosting).
 
 ### Prerequisites
 
-*   **Go:** Requires Go 1.18 or later (if running locally).
-*   **Docker & Docker Compose:** Required if running with Docker.
+- **Go**: Go 1.24 or later (for local runs).
+- **Docker & Docker Compose**: Required for Docker deployments.
+- **Node.js**: Node 20 or later (for building frontend assets locally).
+- **Host Configuration**: Ensure port 3347 is open and the `./config` directory has secure permissions (`chmod 700 ./config`).
 
 ### Running Locally with Go
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/aculix/bitplay.git
-    cd bitplay
-    ```
-2.  **Download dependencies:**
-    ```bash
-    go mod download
-    ```
-3.  **Run the application:**
-    ```bash
-    go run main.go
-    ```
-    By default, the server will start on `http://localhost:3347`.
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/aculix/bitplay.git
+   cd bitplay
+   ```
+2. **Download Go dependencies**:
+   ```bash
+   go mod download
+   ```
+3. **Install frontend dependencies**:
+   ```bash
+   npm ci --production
+   ```
+4. **Build frontend assets**:
+   ```bash
+   npm run build
+   ```
+5. **Run the application**:
+   ```bash
+   go run main.go
+   ```
+   The server starts on `http://localhost:3347`.
 
-### Running with Docker Compose
+### Running with Docker Compose (Recommended)
 
-This is the recommended method for deployment.
+1. **Create a `docker-compose.yml` file**:
+   ```yaml
+   services:
+     bitplay:
+       image: ghcr.io/aculix/bitplay:main
+       container_name: bitplay
+       ports:
+         - 3347:3347
+       volumes:
+         - ./config:/app/config
+       environment:
+         - TORRENT_CLIENT_KEY=your-secure-key
+       restart: unless-stopped
+   ```
+   - **Persistence**: The `./config` volume mounts `settings.json` for persistent settings. Create the directory first:
+     ```bash
+     mkdir -p ./config
+     chmod 700 ./config
+     ```
+   - **Security**: Set `TORRENT_CLIENT_KEY` to a secure value for API authentication.
+   - **Ephemeral Data**: Torrent data is not persisted and is cleared on container restart.
 
-1.  **Create a `docker-compose.yml` file:**
-    ```yaml
-    services:
-      bitplay:
-        image: ghcr.io/aculix/bitplay:main
-        container_name: bitplay
-        ports:
-          - 3347:3347 # Expose the web UI port
-        volumes:
-          # Mount the config directory for persistent settings (Optional)
-          - ./config:/app/config 
-        restart: unless-stopped
-    ```
-    *   **Optional Persistence:** By default, settings (Proxy, Prowlarr/Jackett) are stored inside the container and will be lost if the container is restarted. To make settings persistent across restarts, you can mount a local directory from your host to `/app/config` inside the container using the `volumes` option above. 
-    *   If you choose to mount the directory for persistence, you **must** create the directory on your host machine **before** starting the container for the first time: `mkdir -p ./config`. 
-    *   If you don't mount this volume, the application will still function correctly, but you will need to re-configure your settings after each container restart. Torrent data itself is always ephemeral.
-
-2.  **Start the container:**
-    ```bash
-    docker-compose up -d
-    ```
-3.  **Access the application:** Open your browser to `http://<your-server-ip>:3347`.
+2. **Start the container**:
+   ```bash
+   docker-compose up -d
+   ```
+3. **Access the application**: Open `http://<your-server-ip>:3347`.
 
 ### Running with Docker Run
 
-Alternatively, you can run the container directly using `docker run`:
-
-1.  **(Optional) Create the config directory for persistence:** If you want your settings (Proxy, Prowlarr/Jackett) to persist across container restarts, create the configuration directory on your host first:
-    ```bash
-    mkdir -p ./config
-    ```
-    If you skip this step and the volume mount below, the application will still work, but settings will be lost on restart.
-
-2.  **Run the container:**
-    ```bash
-    docker run -d \
-      --name bitplay \
-      -p 3347:3347 \
-      # Add the volume mount below ONLY if you want persistent settings (and created ./config above)
-      -v $(pwd)/config:/app/config \
-      --restart unless-stopped \
-      ghcr.io/aculix/bitplay:main
-    ```
-    *   `-d`: Run in detached mode (background).
-    *   `--name bitplay`: Assign a name to the container.
-    *   `-p 3347:3347`: Map port 3347 on the host to port 3347 in the container.
-    *   `-v $(pwd)/config:/app/config`: (Optional) Mount the local `./config` directory for persistent settings.
-    *   `--restart unless-stopped`: Configure the container to restart automatically unless manually stopped.
-    *   `ghcr.io/aculix/bitplay:main`: The Docker image to use.
-
-3.  **Access the application:** Open your browser to `http://<your-server-ip>:3347`.
+1. **Create the config directory** (optional, for persistent settings):
+   ```bash
+   mkdir -p ./config
+   chmod 700 ./config
+   ```
+2. **Run the container**:
+   ```bash
+   docker run -d \
+     --name bitplay \
+     -p 3347:3347 \
+     -v $(pwd)/config:/app/config \
+     -e TORRENT_CLIENT_KEY=your-secure-key \
+     --restart unless-stopped \
+     ghcr.io/aculix/bitplay:main
+   ```
+3. **Access the application**: Open `http://<your-server-ip>:3347`.
 
 ## Configuration
 
-BitPlay is configured primarily through its web interface after starting the application.
+Configure BitPlay via the web UI:
 
-1.  **Access the Web UI:** Go to `http://localhost:3347` (or your server's address).
-2.  **Navigate to Settings:** Find the settings or configuration section within the UI.
-3.  **Configure:**
-    *   **Proxy:** Enable/disable proxy support and provide the full SOCKS5 proxy URL (e.g., `socks5://user:pass@host:port`). Test the connection using the provided button.
-    *   **Prowlarr:** Enable/disable Prowlarr, provide the Prowlarr Host URL (e.g., `http://prowlarr:9696`), and your Prowlarr API Key. Test the connection.
-    *   **Jackett:** Enable/disable Jackett, provide the Jackett Host URL (e.g., `http://jackett:9117`), and your Jackett API Key. Test the connection.
+1. **Access the Web UI**: Go to `http://<your-server-ip>:3347`.
+2. **Open Settings**: Click the "Settings" button.
+3. **Configure**:
+   - **Proxy**:
+     - Enable/disable SOCKS5 proxy.
+     - Enter the proxy URL (e.g., `socks5://user:pass@host:port`).
+     - Click "Test Proxy" to verify connectivity.
+   - **Prowlarr**:
+     - Enable/disable Prowlarr.
+     - Enter the host URL (e.g., `http://prowlarr:9696`).
+     - Enter your API key (masked for security).
+     - Click "Test Connection".
+   - **Jackett**:
+     - Enable/disable Jackett.
+     - Enter the host URL (e.g., `http://jackett:9117`).
+     - Enter your API key (masked for security).
+     - Click "Test Connection".
+4. **Save Settings**: Settings are encrypted and saved to `/app/config/settings.json` (mapped to `./config/settings.json` if using the volume mount).
 
-Settings are saved automatically to `/app/config/settings.json` inside the Docker container, which maps to `./config/settings.json` on the host via the mounted volume in the example Docker Compose setup above.
+### API Endpoints
+
+For advanced users, BitPlay exposes RESTful API endpoints (requires `TORRENT_CLIENT_KEY` for authentication):
+- **Add Torrent**: `POST /api/v1/torrent/add` (body: `{ "magnet": "magnet:..." }`)
+- **Get Settings**: `GET /api/v1/settings`
+- **Update Settings**: `POST /api/v1/settings` (body: `{ "proxy": {...}, "prowlarr": {...}, "jackett": {...} }`)
 
 ## Usage
 
-1.  **Configure Settings:** Set up your proxy and search providers (Prowlarr/Jackett) as described above.
-2.  **Search:** Use the search bar to query Prowlarr or Jackett for torrents.
-3.  **Add Torrent:** Paste a magnet link directly or click a search result to add the torrent to BitPlay.
-4.  **Stream:** Once the torrent info is loaded, select the video file you want to watch. BitPlay will start downloading and streaming it directly in the built-in player.
+1. **Configure Settings**: Set up proxy and search providers in the web UI.
+2. **Search Torrents**: Use the search bar to query Prowlarr or Jackett.
+3. **Add Torrent**:
+   - Paste a magnet link and click "Play Now".
+   - Upload a `.torrent` file via drag-and-drop.
+   - Select a search result to add the torrent.
+   - Try the demo with Sintel (CC-licensed movie).
+4. **Stream**: Select a video file from the torrent to stream in the Video.js player.
+
+## Troubleshooting
+
+- **Prowlarr/Jackett Connection Issues**:
+  - Verify host URLs and API keys.
+  - Ensure Prowlarr (`:9696`) or Jackett (`:9117`) is running and accessible.
+  - Check Docker network settings if using containers.
+- **Proxy Errors**:
+  - Confirm the SOCKS5 URL format (`socks5://user:pass@host:port`).
+  - Test the proxy in the UI before saving.
+- **Streaming Issues**:
+  - Ensure sufficient seeders for the torrent.
+  - Check browser console for errors (`index.js` logs).
+- **Docker Issues**:
+  - Verify port 3347 is not in use: `lsof -i :3347`.
+  - Check container logs: `docker logs bitplay`.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues. (You can add more details here if you have specific contribution guidelines).
+Contributions are welcome! To contribute:
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature-name`.
+3. Commit changes: `git commit -m "Add feature"`.
+4. Push to the branch: `git push origin feature-name`.
+5. Open a pull request.
+
+Please include tests and update documentation. Run security checks before submitting:
+```bash
+govulncheck ./...
+npm audit
+```
+
+## Customizing the Frontend
+
+The frontend uses Tailwind CSS, Video.js, and Butterup for styling, video playback, and toast notifications. To customize:
+1. Edit `src/input.css` and rebuild:
+   ```bash
+   npm run build
+   ```
+2. Modify `static/index.html` or `static/assets/index.js` for UI changes.
+3. Minimize dependencies (e.g., remove Butterup or Video.js hotkeys) by updating `package.json` and `index.html`.
+
+For a lighter frontend, replace Tailwind CSS with PicoCSS or native CSS.
 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Built with [anacrolix/torrent](https://github.com/anacrolix/torrent) for torrent handling.
+- Styled with [Tailwind CSS](https://tailwindcss.com).
+- Video playback powered by [Video.js](https://videojs.com).
+- Toast notifications by [Butterup](https://github.com/butterup).
